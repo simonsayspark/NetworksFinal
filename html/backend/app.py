@@ -1,61 +1,37 @@
-import os
-from flask import Flask, jsonify, request
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# Flask app setup
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all origins
 
-# SQLite configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///mydatabase.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Enable CORS for all routes
+CORS(app)
 
-# Database setup
-db = SQLAlchemy(app)
+# Store messages in-memory (simple list)
+messages = []
 
-# Define a model for file records
-class FileRecord(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(120), nullable=False)
-    content = db.Column(db.Text, nullable=True)  # To store file content
+# Endpoint to fetch all messages
+@app.route('/messages', methods=['GET'])
+def get_messages():
+    return jsonify(messages)
 
-    def __repr__(self):
-        return f"<File {self.filename}>"
+# Endpoint to send a new message
+@app.route('/send', methods=['POST'])
+def send_message():
+    try:
+        data = request.get_json()  # Parse the incoming JSON request
+        sender = data.get('sender')  # Extract sender field
+        message = data.get('message')  # Extract message field
 
-# Create the database tables
-with app.app_context():
-    db.create_all()
+        # Validate inputs
+        if not sender or not message:
+            return jsonify({'error': 'Sender and message are required'}), 400
 
-# Define the folder containing dummy files
-DUMMY_FOLDER = "C:/Users/samon/Downloads/nginx-1.27.3/nginx-1.27.3/html/dummy_files"
-
-# Add files from the folder to the database
-@app.route('/add_files', methods=['POST'])
-def add_files_to_db():
-    if not os.path.exists(DUMMY_FOLDER):
-        return jsonify({"error": "Dummy folder not found."}), 403
-    
-
-    for filename in os.listdir(DUMMY_FOLDER):
-        filepath = os.path.join(DUMMY_FOLDER, filename)
-        if os.path.isfile(filepath):
-            with open(filepath, 'r') as file:
-                content = file.read()
-                # Check if the file already exists in the database
-                existing_file = FileRecord.query.filter_by(filename=filename).first()
-                if not existing_file:
-                    new_file = FileRecord(filename=filename, content=content)
-                    db.session.add(new_file)
-
-    db.session.commit()
-    return jsonify({"message": "Files added to the database successfully."})
-
-# List all files from the database
-@app.route('/files', methods=['GET'])
-def list_files():
-    files = FileRecord.query.all()
-    return jsonify([{'id': file.id, 'filename': file.filename, 'content': file.content} for file in files])
+        # Save the message
+        messages.append({'sender': sender, 'message': message})
+        return jsonify({'success': True, 'message': 'Message sent successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Make the app accessible from other devices by listening on 0.0.0.0
+    app.run(host='0.0.0.0', port=5000)
